@@ -114,14 +114,14 @@ def make_inertial_dict(root, msg):
 
         mass = prop.mass  # kg
         occs_dict['mass'] = mass
-        center_of_mass = [_/100.0 for _ in prop.centerOfMass.asArray()] ## cm to m
+        center_of_mass = [_ for _ in prop.centerOfMass.asArray()]
         occs_dict['center_of_mass'] = center_of_mass
 
         # https://help.autodesk.com/view/fusion360/ENU/?guid=GUID-ce341ee6-4490-11e5-b25b-f8b156d7cd97
         (_, xx, yy, zz, xy, yz, xz) = prop.getXYZMomentsOfInertia()
-        moment_inertia_world = [_ / 10000.0 for _ in [xx, yy, zz, xy, yz, xz] ] ## kg / cm^2 -> kg/m^2
+        moment_inertia_world = [_ for _ in [xx, yy, zz, xy, yz, xz] ] ## kg / cm^2
         occs_dict['inertia'] = utils.origin2center_of_mass(moment_inertia_world, center_of_mass, mass)
-        
+
         if 'base_link' in occs.component.name:
             inertial_dict['base_link'] = occs_dict
         else:
@@ -166,13 +166,13 @@ def make_material_dict(root, msg):
     for occs in allOccs:
         app_dict = {}
         app_dict['material'] = "silver_default"
-  
+
         #occs_dict = {}
-        
+
         #for attr in occs.attributes:
             #print(attr.value)
- 
-   
+
+
         def traverseColor(occ):
             appear = None
             if occ.appearance:
@@ -180,9 +180,9 @@ def make_material_dict(root, msg):
                 for prop in occ.appearance.appearanceProperties:
 
                     if type(prop) == adsk.core.ColorProperty:
-                        #print(prop.name)  
+                        # print(prop.name)
                         return(occ.appearance.name, prop)
-            
+
             if occ.bRepBodies:
                 for body in occ.bRepBodies:
                     if body.appearance:
@@ -191,7 +191,7 @@ def make_material_dict(root, msg):
                             if type(prop) == adsk.core.ColorProperty:
                                 #print(prop.name)  
                                 return(body.appearance.name, prop)
-                
+
                 # for prop in occ.component.material.appearance.appearanceProperties:
                 #     #print(prop)
                 #     if type(prop) == adsk.core.ColorProperty:
@@ -210,11 +210,11 @@ def make_material_dict(root, msg):
                     #print(child.name)
                     appear = traverseColor(child)
             return appear
-    
+
         try:
             prop_name, prop = traverseColor(occs)
-        
-        
+
+
             if prop:
                 color_name = convert_german(prop_name).replace("Farbe - ","").replace("Color - ","")
                 color_name = ("".join(re.findall(r"[A-Za-z0-9 ]*", color_name)))
@@ -222,17 +222,17 @@ def make_material_dict(root, msg):
                 color_name.strip()
                 color_name = re.sub('[ :()]', '_', color_name)
                 color_name = color_name.replace("__","_").lower()
-                    # print("Color found: "+ color_name)
-                    # print("Red: %d ", prop.value.red)
-                    # print("Green: %d", prop.value.green)
-                    # print("Blue: %d", prop.value.green)                    
-                    # print("Opac: %d", prop.value.opacity)
-                    
+                # print("Color found: "+ color_name)
+                # print("Red: %d ", prop.value.red)
+                # print("Green: %d", prop.value.green)
+                # print("Blue: %d", prop.value.green)
+                # print("Opac: %d", prop.value.opacity)
+
                 app_dict['material'] = color_name
                 color_dict[color_name] = f"{prop.value.red/255} {prop.value.green/255} {prop.value.blue/255} {prop.value.opacity/255}"
-     
-        
-        
+
+
+
         except:
                 print('Failed:\n{}'.format(traceback.format_exc()))
 
@@ -252,9 +252,9 @@ def make_material_dict(root, msg):
         #             # print("Color found: "+ color_name)
         #             # print("Red: %d ", prop.value.red)
         #             # print("Green: %d", prop.value.green)
-        #             # print("Blue: %d", prop.value.green)                    
+        #             # print("Blue: %d", prop.value.green)
         #             # print("Opac: %d", prop.value.opacity)
-                    
+
         #             app_dict['material'] = color_name
         #             color_dict[color_name] = f"{prop.value.red/255} {prop.value.green/255} {prop.value.blue/255} {prop.value.opacity/255}"
         #             break

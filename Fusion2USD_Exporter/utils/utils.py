@@ -14,9 +14,6 @@ import os.path
 import re
 from xml.etree import ElementTree
 from xml.dom import minidom
-from distutils.dir_util import copy_tree
-import fileinput
-import sys
 
 
 def export_stl(_app, save_dir):
@@ -38,7 +35,7 @@ def export_stl(_app, save_dir):
         if occ.childOccurrences and occ.isLightBulbOn:
             for child in occ.childOccurrences:
                 liste = liste + traverse(child)
-        if occ.isLightBulbOn:   
+        if occ.isLightBulbOn:
             liste = liste + [body for body in occ.bRepBodies if body.isLightBulbOn and occ.component.isBodiesFolderLightBulbOn]
         return liste
 
@@ -145,7 +142,7 @@ def origin2center_of_mass(inertia, center_of_mass, mass):
     z = center_of_mass[2]
     translation_matrix = [y**2+z**2, x**2+z**2, x**2+y**2,
                           -x*y, -y*z, -x*z]
-    return [round(i - mass*t, 6) for i, t in zip(inertia, translation_matrix)]
+    return [i - mass*t for i, t in zip(inertia, translation_matrix)]
 
 
 def prettify(elem):
@@ -164,45 +161,3 @@ def prettify(elem):
     reparsed = minidom.parseString(rough_string)
     return reparsed.toprettyxml(indent="  ")
 
-
-def copy_package(save_dir, package_dir):
-    try:
-        os.mkdir(save_dir + '/launch')
-    except:
-        pass
-    try:
-        os.mkdir(save_dir + '/urdf')
-    except:
-        pass
-    copy_tree(package_dir, save_dir)
-
-
-def update_cmakelists(save_dir, package_name):
-    file_name = save_dir + '/CMakeLists.txt'
-
-    for line in fileinput.input(file_name, inplace=True):
-        if 'project(fusion2urdf)' in line:
-            sys.stdout.write("project(" + package_name + ")\n")
-        else:
-            sys.stdout.write(line)
-
-def update_ros2_launchfile(save_dir, package_name):
-    file_name = save_dir + '/launch/robot_description.launch.py'
-
-    for line in fileinput.input(file_name, inplace=True):
-        if 'fusion2urdf' in line:
-            sys.stdout.write(line.replace('fusion2urdf', package_name))
-        else:
-            sys.stdout.write(line)
-
-def update_package_xml(save_dir, package_name):
-    file_name = save_dir + '/package.xml'
-
-    for line in fileinput.input(file_name, inplace=True):
-        if '<name>' in line:
-            sys.stdout.write("  <name>" + package_name + "</name>\n")
-        elif '<description>' in line:
-            sys.stdout.write("<description>The " +
-                             package_name + " package</description>\n")
-        else:
-            sys.stdout.write(line)

@@ -3,7 +3,7 @@
 	"type":	"script",
 	"author":	"syuntoku14",
 	"description":	{
-		"":	"Export stl and URDF file"
+		"":	"Export stl and json file for USD creation"
 	},
 	"supportedOS":	"windows|mac",
 	"editEnabled":	true
