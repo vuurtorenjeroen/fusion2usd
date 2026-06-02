@@ -32,11 +32,10 @@ def export_stl(_app, save_dir):
     # recursive method to get all bodies from components and sub-components
         body = adsk.fusion.BRepBody.cast(None)
         liste = []
-        if occ.childOccurrences and occ.isLightBulbOn:
+        if occ.childOccurrences:
             for child in occ.childOccurrences:
                 liste = liste + traverse(child)
-        if occ.isLightBulbOn:
-            liste = liste + [body for body in occ.bRepBodies if body.isLightBulbOn and occ.component.isBodiesFolderLightBulbOn]
+        liste = liste + [body for body in occ.bRepBodies]
         return liste
 
 
@@ -46,14 +45,14 @@ def export_stl(_app, save_dir):
     showBodies = []
     body = adsk.fusion.BRepBody.cast(None)
     if root.isBodiesFolderLightBulbOn:
-        lst = [body for body in root.bRepBodies if body.isLightBulbOn]
+        lst = [body for body in root.bRepBodies]
         if len(lst) > 0:
             showBodies.append(['root', lst])
 
         occ = adsk.fusion.Occurrence.cast(None)
         for occ in root.allOccurrences:
-            if not occ.assemblyContext and occ.isLightBulbOn:
-                lst = [body for body in occ.bRepBodies if body.isLightBulbOn and occ.component.isBodiesFolderLightBulbOn]
+            if not occ.assemblyContext:
+                lst = [body for body in occ.bRepBodies]
                 if occ.childOccurrences:
                     for child in occ.childOccurrences:
                         lst = lst + traverse(child)
