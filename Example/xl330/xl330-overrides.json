@@ -1,0 +1,19 @@
+{
+    "NOTE": "Mass in kilo, dimension in centimeters",
+    "joints": {
+        "Revolute 1": {
+            "drive": {
+                "type": "force",
+                "damping": 0.000002517667,
+                "maxforce": 3.4028235e38,
+                "stiffness": 0.0062941676,
+                "targetposition": 0.0
+            }
+        }
+    },
+    "inertial": {
+        "base_link": {
+            "mass": 0.200
+        }
+    }
+}
