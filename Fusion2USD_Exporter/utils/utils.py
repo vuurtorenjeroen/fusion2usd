@@ -97,13 +97,95 @@ def export_stl(_app, save_dir):
             if "base_link" in occ.component.name:
                 expName = "base_link"
             else:
-                expName = re.sub('[ :()]', '_', occ.component.name)
+                expName = re.sub(r'[^A-Za-z0-9_]', '_', occ.component.name)
             expPath = os.path.join(exportFolder, '{}.stl'.format(expName))
             stlOpts = exportMgr.createSTLExportOptions(occ, expPath)
+
             exportMgr.execute(stlOpts)
 
         # remove export Doc
         expDoc.close(False)
+
+
+# def export_stl(_app, save_dir):
+#     """
+#     Export STL files directly from Fusion occurrences.
+
+#     Uses custom tessellation settings to reduce triangle count.
+#     """
+
+#     import os
+#     import re
+#     import time
+
+#     des: adsk.fusion.Design = _app.activeProduct
+#     root: adsk.fusion.Component = des.rootComponent
+
+#     # Create export directory
+#     exportFolder = os.path.join(save_dir, "meshes")
+#     os.makedirs(exportFolder, exist_ok=True)
+
+#     exportMgr = des.exportManager
+
+#     t0 = time.time()
+
+#     # Export all occurrences
+#     for occ in root.allOccurrences:
+
+#         # Skip empty occurrences
+#         if occ.component.bRepBodies.count == 0:
+#             continue
+
+#         name = occ.component.name
+
+#         if "base_link" in name:
+#             expName = "base_link"
+#         else:
+#             expName = re.sub(r"[^A-Za-z0-9_]", "_", name)
+
+#         expPath = os.path.join(
+#             exportFolder,
+#             f"{expName}.stl"
+#         )
+
+#         print(f"Exporting {expName}")
+
+#         stlOpts = exportMgr.createSTLExportOptions(
+#             occ,
+#             expPath
+#         )
+
+#         # Custom mesh refinement
+#         stlOpts.meshRefinement = (
+#             adsk.fusion.MeshRefinementSettings.MeshRefinementCustom
+#         )
+
+#         # Larger values = fewer triangles
+#         stlOpts.surfaceDeviation = 1.0       # mm
+#         stlOpts.normalDeviation = 20.0       # degrees
+#         stlOpts.maximumEdgeLength = 10.0     # mm
+
+#         # Binary STL is smaller/faster
+#         stlOpts.isBinaryFormat = True
+
+#         print(
+#             " settings:",
+#             "surface=", stlOpts.surfaceDeviation,
+#             "normal=", stlOpts.normalDeviation,
+#             "edge=", stlOpts.maximumEdgeLength
+#         )
+
+#         exportMgr.execute(stlOpts)
+
+#         print(
+#             f"Finished {expName}, elapsed {time.time()-t0:.1f}s"
+#         )
+
+#     print(
+#         f"STL export complete. Total time: {time.time()-t0:.1f}s"
+#     )
+
+
 
 def file_dialog(ui):
     """

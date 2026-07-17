@@ -101,16 +101,17 @@ def make_inertial_dict(root, msg):
     msg: str
         Tell the status
     """
-    # Get component properties.      
+    # Get component properties.
     allOccs = root.occurrences
+    # allOccs = root.allOccurrences
     inertial_dict = {}
-    
+
     for occs in allOccs:
         # Skip the root component.
         occs_dict = {}
         prop = occs.getPhysicalProperties(adsk.fusion.CalculationAccuracy.VeryHighCalculationAccuracy)
         
-        occs_dict['name'] = re.sub('[ :()]', '_', occs.name)
+        occs_dict['name'] = re.sub(r'[^A-Za-z0-9_]', '_', occs.name)
 
         mass = prop.mass  # kg
         occs_dict['mass'] = mass
@@ -120,12 +121,43 @@ def make_inertial_dict(root, msg):
         # https://help.autodesk.com/view/fusion360/ENU/?guid=GUID-ce341ee6-4490-11e5-b25b-f8b156d7cd97
         (_, xx, yy, zz, xy, yz, xz) = prop.getXYZMomentsOfInertia()
         moment_inertia_world = [_ for _ in [xx, yy, zz, xy, yz, xz] ] ## kg / cm^2
-        occs_dict['inertia'] = utils.origin2center_of_mass(moment_inertia_world, center_of_mass, mass)
+        occs_dict['inertia'] = [_/mass for _ in utils.origin2center_of_mass(moment_inertia_world, center_of_mass, mass)]
+
+
+        # # xyz_of_joint = occs.transform2.getAsCoordinateSystemorigin()
+        # # print(f"xyz : {[i for i in xyz_of_joint.asArray()]}")
+        # transform = occs.transform2
+
+        # origin = transform.translation
+        # world_xyz = origin.asArray()
+
+        # print(f"World XYZ: {world_xyz}")
+
+        # occs_dict['world_position'] = world_xyz
+
+        # transform = occs.transform2
+
+        # # Returns the matrix in row-major order
+        # matrix = transform.asArray()
+
+        # occs_dict["world_transform"] = matrix
+
+        # origin = occs.transform2.translation
+
+        # occs_dict["world_translation"] = origin.asArray()
+
+        # transform = occs.transform2
+        # occs_dict["world_transform"] = transform.asArray()
+        # occs_dict["world_translation"] = transform.translation.asArray()
+
+        transform = occs.transform2
+        occs_dict["world_transform"] = list(transform.asArray())
+
 
         if 'base_link' in occs.component.name:
             inertial_dict['base_link'] = occs_dict
         else:
-            inertial_dict[re.sub('[ :()]', '_', occs.name)] = occs_dict
+            inertial_dict[re.sub(r'[^A-Za-z0-9_]', '_', occs.name)] = occs_dict
 
     return inertial_dict, msg
 
@@ -220,7 +252,7 @@ def make_material_dict(root, msg):
                 color_name = ("".join(re.findall(r"[A-Za-z0-9 ]*", color_name)))
                 color_name = re.sub('\s+',' ',color_name)
                 color_name.strip()
-                color_name = re.sub('[ :()]', '_', color_name)
+                color_name = re.sub(r'[^A-Za-z0-9_]', '_', color_name)
                 color_name = color_name.replace("__","_").lower()
                 # print("Color found: "+ color_name)
                 # print("Red: %d ", prop.value.red)
@@ -262,6 +294,6 @@ def make_material_dict(root, msg):
         if "base_link" in occs.component.name:
             material_dict['base_link'] = app_dict
         else:
-            material_dict[re.sub('[ :()]', '_', occs.name)] = app_dict
+            material_dict[re.sub(r'[^A-Za-z0-9_]', '_', occs.name)] = app_dict
 
     return material_dict, color_dict, msg
