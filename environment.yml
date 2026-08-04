@@ -7,3 +7,5 @@ dependencies:
   - pip:
     - usd-core
     - trimesh
+    - pyyaml
+    - pymeshlab

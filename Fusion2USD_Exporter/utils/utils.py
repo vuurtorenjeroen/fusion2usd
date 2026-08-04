@@ -242,3 +242,155 @@ def prettify(elem):
     reparsed = minidom.parseString(rough_string)
     return reparsed.toprettyxml(indent="  ")
 
+
+
+def get_parent(occ):
+# function to find the root component of the joint. This is necessary for the correct component name in the urdf file
+    if occ.assemblyContext != None:
+        #print(occ.name)
+        occ = get_parent(occ.assemblyContext)
+    return occ
+
+
+def matrix_from_axes(x, y, z):
+    """
+    Build a Fusion Matrix3D from orthonormal axes.
+    """
+
+    m = adsk.core.Matrix3D.create()
+
+    a = [0.0] * 16
+
+    a[0] = x.x
+    a[1] = y.x
+    a[2] = z.x
+    a[3] = 0.0
+
+    a[4] = x.y
+    a[5] = y.y
+    a[6] = z.y
+    a[7] = 0.0
+
+    a[8] = x.z
+    a[9] = y.z
+    a[10] = z.z
+    a[11] = 0.0
+
+    a[12] = 0.0
+    a[13] = 0.0
+    a[14] = 0.0
+    a[15] = 1.0
+
+    m.setWithArray(a)
+
+    return m
+
+
+def get_usd_joint_axis(axis, joint_frame):
+    """
+    Convert Fusion joint axis into USD RevoluteJoint local axis.
+
+    Fusion axis is in component/world space.
+    USD axis is in the joint local frame.
+    """
+
+    # Make a copy because transformBy modifies the vector
+    local_axis = adsk.core.Vector3D.create(
+        axis.x,
+        axis.y,
+        axis.z
+    )
+
+    # Convert world/component axis into joint frame
+    inv = joint_frame.copy()
+    inv.invert()
+
+    local_axis.transformBy(inv)
+
+    x = abs(local_axis.x)
+    y = abs(local_axis.y)
+    z = abs(local_axis.z)
+
+    if x > y and x > z:
+        return "X", local_axis.x
+
+    elif y > x and y > z:
+        return "Y", local_axis.y
+
+    else:
+        return "Z", local_axis.z
+
+
+def matrix_to_quaternion(mat):
+    """
+    Convert Fusion Matrix3D rotation to quaternion.
+    Returns [w,x,y,z] for USD Gf.Quatf.
+    """
+
+    m = mat.asArray()
+
+    # Fusion Matrix3D is row-major:
+    #
+    # [ r00 r01 r02 tx ]
+    # [ r10 r11 r12 ty ]
+    # [ r20 r21 r22 tz ]
+    # [  0   0   0  1 ]
+
+    r00 = m[0]
+    r01 = m[1]
+    r02 = m[2]
+
+    r10 = m[4]
+    r11 = m[5]
+    r12 = m[6]
+
+    r20 = m[8]
+    r21 = m[9]
+    r22 = m[10]
+
+
+    trace = r00 + r11 + r22
+
+    if trace > 0:
+
+        s = 0.5 / (trace + 1.0)**0.5
+
+        w = 0.25 / s
+        x = (r21-r12)*s
+        y = (r02-r20)*s
+        z = (r10-r01)*s
+
+    elif r00 > r11 and r00 > r22:
+
+        s = 2.0 * (1.0+r00-r11-r22)**0.5
+
+        w = (r21-r12)/s
+        x = 0.25*s
+        y = (r01+r10)/s
+        z = (r02+r20)/s
+
+    elif r11 > r22:
+
+        s = 2.0*(1.0+r11-r00-r22)**0.5
+
+        w = (r02-r20)/s
+        x = (r01+r10)/s
+        y = 0.25*s
+        z = (r12+r21)/s
+
+    else:
+
+        s = 2.0*(1.0+r22-r00-r11)**0.5
+
+        w = (r10-r01)/s
+        x = (r02+r20)/s
+        y = (r12+r21)/s
+        z = 0.25*s
+
+
+    return [
+        float(w),
+        float(x),
+        float(y),
+        float(z)
+    ]

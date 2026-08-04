@@ -123,37 +123,6 @@ def make_inertial_dict(root, msg):
         moment_inertia_world = [_ for _ in [xx, yy, zz, xy, yz, xz] ] ## kg / cm^2
         occs_dict['inertia'] = [_/mass for _ in utils.origin2center_of_mass(moment_inertia_world, center_of_mass, mass)]
 
-
-        # # xyz_of_joint = occs.transform2.getAsCoordinateSystemorigin()
-        # # print(f"xyz : {[i for i in xyz_of_joint.asArray()]}")
-        # transform = occs.transform2
-
-        # origin = transform.translation
-        # world_xyz = origin.asArray()
-
-        # print(f"World XYZ: {world_xyz}")
-
-        # occs_dict['world_position'] = world_xyz
-
-        # transform = occs.transform2
-
-        # # Returns the matrix in row-major order
-        # matrix = transform.asArray()
-
-        # occs_dict["world_transform"] = matrix
-
-        # origin = occs.transform2.translation
-
-        # occs_dict["world_translation"] = origin.asArray()
-
-        # transform = occs.transform2
-        # occs_dict["world_transform"] = transform.asArray()
-        # occs_dict["world_translation"] = transform.translation.asArray()
-
-        transform = occs.transform2
-        occs_dict["world_transform"] = list(transform.asArray())
-
-
         if 'base_link' in occs.component.name:
             inertial_dict['base_link'] = occs_dict
         else:

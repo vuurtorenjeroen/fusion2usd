@@ -88,20 +88,6 @@ def create_material(rootname, stage, name, rgb):
     )
     return mat
 
-# def matrix_from_json(data):
-#     return Gf.Matrix4d(
-#         data[0], data[1], data[2], data[3],
-#         data[4], data[5], data[6], data[7],
-#         data[8], data[9], data[10], data[11],
-#         data[12], data[13], data[14], data[15]
-#     )
-
-
-# def get_joint_local_transform(link_world, joint_world):
-
-#     link_inv = link_world.GetInverse()
-
-#     return link_inv * joint_world
 
 # ------------------------------------------------------------
 # Link builder with full physics
@@ -111,32 +97,6 @@ def create_link(rootname, stage, name, verts, faces, inertial, material, verts_c
     path = f"/{rootname}/{name}"
 
     link = UsdGeom.Xform.Define(stage, path)
-
-    # if "world_transform" in inertial:
-
-    #     m = inertial["world_transform"]
-
-    #     usd_matrix = Gf.Matrix4d(
-    #         m[0],  m[1],  m[2],  m[3],
-    #         m[4],  m[5],  m[6],  m[7],
-    #         m[8],  m[9],  m[10], m[11],
-    #         m[12], m[13], m[14], m[15]
-    #     )
-
-    #     # actually adding the transform breaks the design as the meshes are in world coordinates
-    #     link.AddTransformOp().Set(usd_matrix)
-
-    # # mat = Gf.Matrix4d(*inertial["world_transform"])
-    # # UsdGeom.Xformable(link).AddTransformOp().Set(mat)
-    # matrix = np.array(inertial["world_transform"]).reshape((4,4))
-    # gf = Gf.Matrix4d(
-    #     matrix[0,0], matrix[0,1], matrix[0,2], matrix[0,3],
-    #     matrix[1,0], matrix[1,1], matrix[1,2], matrix[1,3],
-    #     matrix[2,0], matrix[2,1], matrix[2,2], matrix[2,3],
-    #     matrix[3,0], matrix[3,1], matrix[3,2], matrix[3,3],
-    # )
-
-    # UsdGeom.Xformable(link).AddTransformOp().Set(gf)
 
     # Physics
     rb = UsdPhysics.RigidBodyAPI.Apply(link.GetPrim())
@@ -178,10 +138,6 @@ def create_link(rootname, stage, name, verts, faces, inertial, material, verts_c
         UsdShade.MaterialBindingAPI(vis).Bind(material)
         UsdShade.MaterialBindingAPI.Apply(vis.GetPrim())
 
-        # actually adding the transform breaks the design as the meshes are in world coordinates
-        # if "world_transform" in inertial:
-        #     vis.AddTransformOp().Set(usd_matrix.GetInverse())
-
 
     # -------------------------
     # Collision mesh (explicit)
@@ -206,10 +162,6 @@ def create_link(rootname, stage, name, verts, faces, inertial, material, verts_c
         UsdPhysics.MeshCollisionAPI.Apply(col.GetPrim())
         UsdPhysics.MeshCollisionAPI(col.GetPrim()).CreateApproximationAttr("convexHull")
         # UsdPhysics.MeshCollisionAPI(col.GetPrim()).CreateApproximationAttr("convexDecomposition")
-
-        # actually adding the transform breaks the design as the meshes are in world coordinates
-        # if "world_transform" in inertial:
-        #     col.AddTransformOp().Set(usd_matrix.GetInverse())
 
 
     return link
@@ -245,7 +197,6 @@ def create_joint(rootname, stage, name, jdata, inertial):
     jtype = jdata["type"]
     parent = jdata["parent"]
     child = jdata["child"]
-    axis = jdata["axis"]
     name = usd_safe_name(name)
     parent = usd_safe_name(parent)
     child = usd_safe_name(child)
@@ -255,42 +206,27 @@ def create_joint(rootname, stage, name, jdata, inertial):
     if jtype == "continuous" or jtype == "revolute":
         joint = UsdPhysics.RevoluteJoint.Define(stage, path)
         # Rotation axis
-        # TODO check rotation axis when angled
-        # if axis[0] == 1.0:
-        #     joint.CreateAxisAttr("X")
-        # elif axis[1] == 1.0:
-        #     joint.CreateAxisAttr("Y")
-        # elif axis[2] == 1.0:
-        #     joint.CreateAxisAttr("Z")
-        def get_axis(axis):
-            x,y,z = axis
-
-            if abs(x) > abs(y) and abs(x) > abs(z):
-                return "X"
-
-            if abs(y) > abs(x) and abs(y) > abs(z):
-                return "Y"
-
-            return "Z"
-
         joint.CreateAxisAttr(
-            get_axis(axis)
+            jdata["usd_axis"]
         )
 
-        # TODO check min/max position when revolute
         if jtype == "revolute":
             joint.CreateLowerLimitAttr(jdata["lower_limit"])
             joint.CreateUpperLimitAttr(jdata["upper_limit"])
 
         drive = UsdPhysics.DriveAPI.Apply(joint.GetPrim(), "angular")
-        # TODO make all parameters optional
         if "drive" in jdata:
             drivedata = jdata["drive"]
-            drive.CreateTypeAttr(drivedata["type"])
-            drive.CreateDampingAttr(drivedata["damping"])
-            drive.CreateMaxForceAttr(drivedata["maxforce"])
-            drive.CreateStiffnessAttr(drivedata["stiffness"])
-            drive.CreateTargetPositionAttr(drivedata["targetposition"])  # degrees
+            if "type" in drivedata:
+                drive.CreateTypeAttr(drivedata["type"])
+            if "damping" in drivedata:
+                drive.CreateDampingAttr(drivedata["damping"])
+            if "maxforce" in drivedata:
+                drive.CreateMaxForceAttr(drivedata["maxforce"])
+            if "stiffness" in drivedata:
+                drive.CreateStiffnessAttr(drivedata["stiffness"])
+            if "targetposition" in drivedata:
+                drive.CreateTargetPositionAttr(drivedata["targetposition"])  # degrees
 
 
     elif jtype == "fixed":
@@ -302,75 +238,9 @@ def create_joint(rootname, stage, name, jdata, inertial):
     joint.CreateBody0Rel().SetTargets([f"/{rootname}/{parent}"])
     joint.CreateBody1Rel().SetTargets([f"/{rootname}/{child}"])
 
-    # TODO this should be using joint offset instead of xyz or we need to add a lot of translates ...
-    # joint.CreateLocalPos0Attr(Gf.Vec3f(*jdata["xyz"]))
-    # joint.CreateLocalPos0Attr(Gf.Vec3f(0, 0, 0))
-    # joint.CreateLocalPos1Attr(Gf.Vec3f(0, 0, 0))
-
-
-    # parent_tf = matrix_from_json(
-    #     inertial[parent]["world_transform"]
-    # )
-
-    # child_tf = matrix_from_json(
-    #     inertial[child]["world_transform"]
-    # )
-
-    # joint_tf = matrix_from_json(
-    #     jdata["world_transform"]
-    # )
-
-
-    # parent_joint = get_joint_local_transform(
-    #     parent_tf,
-    #     joint_tf
-    # )
-
-    # child_joint = get_joint_local_transform(
-    #     child_tf,
-    #     joint_tf
-    # )
-
-
-    # joint.CreateLocalPos0Attr(
-    #     Gf.Vec3f(
-    #         parent_joint[3][0],
-    #         parent_joint[3][1],
-    #         parent_joint[3][2]
-    #     )
-    # )
-
-    # joint.CreateLocalPos1Attr(
-    #     Gf.Vec3f(
-    #         child_joint[3][0],
-    #         child_joint[3][1],
-    #         child_joint[3][2]
-    #     )
-    # )
-
-
-    # joint_pos = jdata["xyz"]
-
-    # joint.CreateLocalPos0Attr(
-    #     Gf.Vec3f(
-    #         joint_pos[0],
-    #         joint_pos[1],
-    #         joint_pos[2]
-    #     )
-    # )
-
-    # joint.CreateLocalPos1Attr(
-    #     Gf.Vec3f(
-    #         0,
-    #         0,
-    #         0
-    #     )
-    # )
-
-
-
-
-
+    # ---------------------------------------
+    # Joint position
+    # ---------------------------------------
     parent_pos = jdata.get(
         "parent_xyz",
         [0,0,0]
@@ -402,71 +272,37 @@ def create_joint(rootname, stage, name, jdata, inertial):
     # -------------------------------
     # Joint orientation
     # -------------------------------
-    # TODO
-    # disabled causes weird issues, probably related to world coordinates in mesh
-    # was caused by wrong rotation values for fixed asBuiltJoints, so removed those values from json
-    # apparently there is also an issue with the revolute joints data, points move after starting simulation
-    # parent_rot = jdata.get(
-    #     "parent_orientation",
-    #     [1,0,0,0]
-    # )
+    parent_rot = jdata.get(
+        "parent_orientation",
+        [1,0,0,0]
+    )
 
-    # child_rot = jdata.get(
-    #     "child_orientation",
-    #     [1,0,0,0]
-    # )
+    child_rot = jdata.get(
+        "child_orientation",
+        [1,0,0,0]
+    )
 
-    # joint.CreateLocalRot0Attr(
-    #     # Gf.Quatf(
-    #     #     parent_rot[0],
-    #     #     parent_rot[1],
-    #     #     parent_rot[2],
-    #     #     parent_rot[3]
-    #     # )
-    #     Gf.Quatf(
-    #         parent_rot[0],
-    #         Gf.Vec3f(
-    #             parent_rot[1],
-    #             parent_rot[2],
-    #             parent_rot[3]
-    #         )
-    #     )
-    # )
+    joint.CreateLocalRot0Attr(
+        Gf.Quatf(
+            parent_rot[0],
+            Gf.Vec3f(
+                parent_rot[1],
+                parent_rot[2],
+                parent_rot[3]
+            )
+        )
+    )
 
-    # joint.CreateLocalRot1Attr(
-    #     # Gf.Quatf(
-    #     #     child_rot[0],
-    #     #     child_rot[1],
-    #     #     child_rot[2],
-    #     #     child_rot[3]
-    #     # )
-    #     Gf.Quatf(
-    #         child_rot[0],
-    #         Gf.Vec3f(
-    #             child_rot[1],
-    #             child_rot[2],
-    #             child_rot[3]
-    #         )
-    #     )
-    # )
-
-
-
-
-    # xyz = jdata.get("xyz",[0,0,0])
-
-    # joint.CreateLocalPos0Attr(
-    #     Gf.Vec3f(
-    #         xyz[0],
-    #         xyz[1],
-    #         xyz[2]
-    #     )
-    # )
-
-    # joint.CreateLocalPos1Attr(
-    #     Gf.Vec3f(0,0,0)
-    # )
-
+    joint.CreateLocalRot1Attr(
+        Gf.Quatf(
+            child_rot[0],
+            Gf.Vec3f(
+                child_rot[1],
+                child_rot[2],
+                child_rot[3]
+            )
+        )
+    )
 
 
     return joint
@@ -534,6 +370,7 @@ def main():
         elif o == '--overrides':
             overrides = a
 
+    rootname = usd_safe_name(rootname)
     # print(f"rootname: {rootname}")
     # print(f"inputfile: {inputfile}")
     # print(f"output: {output}")
