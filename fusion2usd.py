@@ -73,6 +73,145 @@ def load_stl(path, target_faces=50000):
 
 
 # ------------------------------------------------------------
+# Convex hull collision meshes
+# ------------------------------------------------------------
+# Collision meshes use the "convexHull" approximation, so PhysX only ever
+# sees the convex hull of the collision mesh's points. load_stl()'s quadric
+# edge-collapse decimation (collision_mesh_faces, default 500) MOVES
+# vertices, and mirrored parts decimate differently: on the qmini feet it
+# produced a vertex 3 mm below the real sole on the right foot only (a
+# rocker), while the left foot rested on its toe/heel tips -- the sim
+# learned a left/right asymmetric gait from that (2026-10-06).
+#
+# collision_mode: "hull" instead builds the collision mesh from the EXACT
+# convex hull of the full-resolution STL. No vertex is moved; if the hull
+# has more than collision_hull_max_vertices (PhysX GPU convex hulls are
+# limited to 64), vertices are SELECTED (never displaced): the bottom
+# (lowest collision_hull_bottom_band_mm) is kept in detail -- its outline
+# and its lateral profile along the part, which is what touches the ground
+# -- and the rest is farthest-point sampled.
+#
+# Optional collision_contact_patch (for feet) models a compliant sole
+# layer: STL points within tolerance_mm of the lowest point and within
+# +-half_width_mm (along X) of the sole centreline are flattened onto the
+# lowest z. Assumes Z up and the foot's length along Y (true for this
+# Fusion export). Example (qmini feet, measured real flat part ~100x12 mm):
+#   Left_Foot_1:
+#     collision_mode: hull
+#     collision_contact_patch: {tolerance_mm: 1.3, half_width_mm: 6.0}
+
+def _convex_hull(points):
+    """Exact convex hull of a point cloud via pymeshlab (qhull):
+    returns (vertices (V,3), triangles (F,3)) with outward winding."""
+    ms = pymeshlab.MeshSet()
+    ms.add_mesh(pymeshlab.Mesh(vertex_matrix=np.asarray(points, dtype=np.float64)))
+    ms.generate_convex_hull()
+    m = ms.current_mesh()
+    v = np.array(m.vertex_matrix())
+    f = np.array(m.face_matrix())
+    c = v.mean(axis=0)
+    for i, (a, b, d) in enumerate(f):
+        n = np.cross(v[b] - v[a], v[d] - v[a])
+        if np.dot(n, v[a] - c) < 0:
+            f[i] = [a, d, b]
+    return v, f
+
+
+def _convex_hull_2d(points):
+    """Andrew's monotone chain; returns the hull polygon (counter-clockwise)."""
+    pts = sorted(set(map(tuple, np.round(points, 6))))
+    if len(pts) <= 2:
+        return np.array(pts)
+    cross = lambda o, a, b: (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+    lower, upper = [], []
+    for p in pts:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0:
+            lower.pop()
+        lower.append(p)
+    for p in reversed(pts):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0:
+            upper.pop()
+        upper.append(p)
+    return np.array(lower[:-1] + upper[:-1])
+
+
+def _simplify_closed_polygon(poly, n):
+    """Indices of the n vertices that best keep a closed 2D polygon's shape
+    (repeatedly drops the vertex spanning the smallest triangle)."""
+    idx = list(range(len(poly)))
+    while len(idx) > n:
+        areas = []
+        for k in range(len(idx)):
+            a, b, c = poly[idx[k - 1]], poly[idx[k]], poly[idx[(k + 1) % len(idx)]]
+            areas.append(abs((b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1])))
+        idx.pop(int(np.argmin(areas)))
+    return idx
+
+
+def load_stl_hull(path, max_vertices=60, contact_patch=None, bottom_band_mm=8.0,
+                  band_bins=12, outline_vertices=16):
+    """Collision mesh = exact convex hull of the full-resolution STL (see the
+    comment block above). Returns (vertices_cm, faces) like load_stl()."""
+    ms = pymeshlab.MeshSet()
+    ms.load_new_mesh(path)
+    P = np.array(ms.current_mesh().vertex_matrix())  # mm
+    z0 = P[:, 2].min()
+
+    patch_info = None
+    if contact_patch:
+        tol = float(contact_patch.get("tolerance_mm", 1.0))
+        half_w = float(contact_patch.get("half_width_mm", 6.0))
+        xc = P[P[:, 2] < z0 + 0.3, 0].mean()  # sole centreline
+        patch = (P[:, 2] < z0 + tol) & (np.abs(P[:, 0] - xc) <= half_w)
+        P = P.copy()
+        P[patch, 2] = z0
+        patch_info = (xc, P[patch, 1].min(), P[patch, 1].max(), np.ptp(P[patch, 0]))
+
+    H, F = _convex_hull(P)
+    if len(H) > max_vertices:
+        keep = []
+        # 1) outline of the lowest face (the contact patch, if any)
+        sole = H[H[:, 2] <= z0 + 1e-6]
+        if len(sole) >= 3:
+            outline = _convex_hull_2d(sole[:, :2])
+            for i in _simplify_closed_polygon(outline, outline_vertices):
+                j = np.argmin(np.linalg.norm(sole[:, :2] - outline[i], axis=1))
+                keep.append(sole[j])
+        else:
+            keep += list(sole)
+        # 2) bottom band: per slice along Y the outermost points on both sides + the lowest
+        band = H[(H[:, 2] > z0 + 1e-6) & (H[:, 2] < z0 + bottom_band_mm)]
+        edges = np.linspace(H[:, 1].min(), H[:, 1].max(), band_bins + 1)
+        for lo, hi in zip(edges[:-1], edges[1:]):
+            b = band[(band[:, 1] >= lo) & (band[:, 1] < hi)]
+            if len(b):
+                for k in (np.argmin(b[:, 0]), np.argmax(b[:, 0]), np.argmin(b[:, 2])):
+                    keep.append(b[k])
+        chosen = list(np.unique(np.array(keep), axis=0))
+        # 3) farthest-point sampling of everything above the band
+        rest = H[H[:, 2] >= z0 + bottom_band_mm]
+        while len(rest):
+            if len(_convex_hull(np.array(chosen))[0]) >= max_vertices:
+                break
+            d = np.min(np.linalg.norm(rest[:, None, :] - np.array(chosen)[None, :, :], axis=2), axis=1)
+            k = int(np.argmax(d))
+            chosen.append(rest[k])
+            rest = np.delete(rest, k, axis=0)
+        while len(_convex_hull(np.array(chosen))[0]) > max_vertices:
+            chosen.pop()
+        H, F = _convex_hull(np.array(chosen))
+
+    print(f"{path}: collision hull {len(H)} vertices, {len(F)} faces, lowest z {z0:.2f} mm")
+    if patch_info:
+        xc, y_front, y_rear, width = patch_info
+        print(f"   contact patch {y_rear - y_front:.1f} x {width:.1f} mm; centreline x={xc:.2f} mm, "
+              f"ends y={y_front:.2f} / {y_rear:.2f} mm, z={z0:.2f} mm  (base-frame heel/toe points, m: "
+              f"({xc/1000:.5f}, {y_rear/1000:.5f}, {z0/1000:.5f}) / ({xc/1000:.5f}, {y_front/1000:.5f}, {z0/1000:.5f}))")
+    # USD is in cm, stl is in mm
+    return H / 10.0, F
+
+
+# ------------------------------------------------------------
 # Material system
 # ------------------------------------------------------------
 def create_material(rootname, stage, name, rgb):
@@ -434,7 +573,17 @@ def main():
         vis_faces = data["inertial"][link_name].get("visual_mesh_faces", 50000)
         col_faces = data["inertial"][link_name].get("collision_mesh_faces", 500)
         meshes[link_name] = load_stl(stl_path, target_faces=vis_faces)
-        meshes_col[link_name] = load_stl(stl_path, target_faces=col_faces)
+        link_cfg = data["inertial"][link_name]
+        if link_cfg.get("collision_mode", "decimate") == "hull":
+            # exact convex hull, see load_stl_hull's comment block
+            meshes_col[link_name] = load_stl_hull(
+                stl_path,
+                max_vertices=link_cfg.get("collision_hull_max_vertices", 60),
+                contact_patch=link_cfg.get("collision_contact_patch"),
+                bottom_band_mm=link_cfg.get("collision_hull_bottom_band_mm", 8.0),
+            )
+        else:
+            meshes_col[link_name] = load_stl(stl_path, target_faces=col_faces)
 
 
     # ------------------------------------------------------------
