@@ -393,7 +393,11 @@ def main():
 
     root = UsdGeom.Xform.Define(stage, f"/{rootname}")
     # UsdPhysics.ArticulationRootAPI.Apply(root.GetPrim())
-    create_root_joint(rootname, stage)
+    if data.get("create_root_joint", True):
+        create_root_joint(rootname, stage)
+    else:
+        path = f"/{rootname}/root_joint"
+        UsdPhysics.ArticulationRootAPI.Apply(root.GetPrim())
 
     # IMPORTANT: Scope (not Xform)
     UsdGeom.Scope.Define(stage, f"/{rootname}/joints")
